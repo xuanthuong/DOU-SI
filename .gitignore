@@ -100,3 +100,7 @@ ENV/
 # mypy
 .mypy_cache/
 .vscode/
+.DS_Store
+*/.DS_Store
+*/multiclass_svm_model_9keys.sav
+

@@ -13,11 +13,12 @@ Date: Jun 05, 2017
 import os, glob, random
 import numpy as np
 from pandas import DataFrame
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from sklearn.metrics import confusion_matrix, precision_score
 from sklearn.pipeline import Pipeline
+from sklearn.externals import joblib
 from sklearn.cross_validation import KFold
 import time
 import codecs
@@ -45,14 +46,14 @@ def build_data_frame(data_dir):
     tmp_dir = os.path.join(data_dir, d)
     rows = []
     index = []
-    for f in os.listdir(tmp_dir):
-      if f.endswith('.txt'):
-        tmp_file = os.path.join(tmp_dir, f)
-        with codecs.open(tmp_file, encoding="latin1") as fc:
-          value = fc.read().split(NEW_LINE)
-          value = '. '.join(value) # join, strip, slip, enumerate
-          rows.append({'value': value, 'class': d})
-          index.append(tmp_file)
+    for f in glob.glob(os.path.join(tmp_dir, '*.txt')):
+      with open(f, encoding="latin1") as fc:
+        value = [line.replace('\n', '').replace('\r', '').replace('\t', '') 
+                    for line in fc.readlines()]
+        value = '. '.join(value)
+        rows.append({'value': value, 'class': d})
+        index.append(f)
+
     tmp_df = DataFrame(rows, index=index)
     size = int(len(tmp_df) * TRAIN_SIZE)
     train_df, test_df = tmp_df.iloc[:size], tmp_df.iloc[size:]
@@ -62,14 +63,12 @@ def build_data_frame(data_dir):
 
     class_names.append(d)
 
-    total_amount.append({d: len(os.listdir(tmp_dir))})
-    train_amount.append({d: len(train_df)})
-    test_amount.append({d: len(test_df)})
+    total_amount.append(len(os.listdir(tmp_dir)))
+    train_amount.append(len(train_df))
+    test_amount.append(len(test_df))
   
-  print ('List of classes\'s name: %s' % class_names)
-  print ('Total amount of data: %s' % total_amount)
-  print ('Total amount of train data: %s' % train_amount)
-  print ('Total amount of test data: %s' % test_amount)
+  tmp_arr = np.array([total_amount, train_amount, test_amount])
+  print (DataFrame(tmp_arr, ['Total', 'Train', 'Test'], class_names))
   
   train_data = train_data.reindex(np.random.permutation(train_data.index))
   test_data = test_data.reindex(np.random.permutation(test_data.index))
@@ -116,8 +115,10 @@ def main():
 
   pipeline = Pipeline([
     ('vectorizer', CountVectorizer()),
+    ('tfidf_transformer',  TfidfTransformer()),
     ('classifier', LinearSVC())])
 
+  ######### One-KFolds ##############################
   train_data, test_data = train_data_df['value'].values, test_data_df['value'].values
   train_target, test_target = train_data_df['class'].values, test_data_df['class'].values
   
@@ -129,18 +130,6 @@ def main():
   print(cnf_matrix)
   print("Score with one-fold: %s" % precision_score(test_target, predictions, average = 'weighted'))
   print("Score with one-fold: %s" % precision_score(test_target, predictions, average = None))
-
-  # Plot non-normalized confusion matrix
-  plt.figure()
-  plot_confusion_matrix(cnf_matrix, classes=class_names,
-                        title='Confusion matrix, without normalization')
-
-  # Plot normalized confusion matrix
-  plt.figure()
-  plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True,
-                        title='Normalized confusion matrix')
-
-  plt.show()
 
   # ######### KFolds ##############################
   # k_fold = KFold(n=len(data_frame), n_folds=6)
@@ -161,7 +150,17 @@ def main():
 
   # print('Confusion matrix with 6-fold: ')
   # print(confusion)
-  # print('Score with 6-fold: %s' % (sum(scores)/len(scores)))
+  # print('Score with 6-fold: %s' % (sum(scores)/len(scores)))  
+
+  # Plot non-normalized confusion matrix
+  plt.figure()
+  plot_confusion_matrix(cnf_matrix, classes=class_names,
+                        title='Confusion matrix, without normalization')
+  # Plot normalized confusion matrix
+  plt.figure()
+  plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True,
+                        title='Normalized confusion matrix')
+  plt.show()
 
 
 if __name__ == "__main__":
