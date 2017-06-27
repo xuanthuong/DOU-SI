@@ -1,10 +1,10 @@
 #  -*- coding: utf-8 -*-
 """
-Key classification
-using multiclass Support Vector Machine (SVM)
+Binary classification - SI and NONSI
+Algorithms: SVM
 reference: 
 
-Date: Jun 05, 2017
+Date: Jun 14, 2017
 @author: Thuong Tran
 @Library: scikit-learn
 """
@@ -15,13 +15,13 @@ import numpy as np
 from pandas import DataFrame
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.metrics import confusion_matrix, precision_score
+from sklearn.metrics import precision_recall_fscore_support as score
 from sklearn.pipeline import Pipeline
 from sklearn.externals import joblib
 from sklearn.cross_validation import KFold
 import time
-import codecs
 import matplotlib.pyplot as plt
 import itertools
 
@@ -31,7 +31,6 @@ TRAIN_SIZE = 0.8
 
 
 def build_data_frame(data_dir):  
-  # folders = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
   dirs = next(os.walk(data_dir))[1] # [0]: path, [1]: folders list, [2] files list
   
   class_names = []
@@ -47,10 +46,10 @@ def build_data_frame(data_dir):
     rows = []
     index = []
     for f in glob.glob(os.path.join(tmp_dir, '*.txt')):
-      with open(f, encoding="latin1") as fc:
+      with open(f, encoding="utf-8") as fc:
         value = [line.replace('\n', '').replace('\r', '').replace('\t', '') 
                     for line in fc.readlines()]
-        value = '. '.join(value)
+        value = ' '.join(value)
         rows.append({'value': value, 'class': d})
         index.append(f)
 
@@ -109,14 +108,15 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
 
 
-def main():
-  data_dir = '/Users/thuong/Documents/tmp_datasets/SI/TrainValue'
+def pipeline_main():
+  data_dir = '/Users/thuong/Documents/tmp_datasets/SI/SI-NonSI'
   train_data_df, test_data_df, class_names = build_data_frame(data_dir)
 
+  class_weight = {'NonSI': 100, 'SI': 1}
+  # ('tfidf_transformer',  TfidfTransformer()),
   pipeline = Pipeline([
     ('vectorizer', CountVectorizer()),
-    ('tfidf_transformer',  TfidfTransformer()),
-    ('classifier', LinearSVC())])
+    ('classifier', SVC(class_weight = class_weight))])
 
   ######### One-KFolds ##############################
   train_data, test_data = train_data_df['value'].values, test_data_df['value'].values
@@ -126,41 +126,64 @@ def main():
   predictions = pipeline.predict(test_data)
 
   cnf_matrix = confusion_matrix(test_target, predictions)
+
   print('Confusion matrix with one-fold: ')
   print(cnf_matrix)
-  print("Score with one-fold: %s" % precision_score(test_target, predictions, average = 'weighted'))
-  print("Score with one-fold: %s" % precision_score(test_target, predictions, average = None))
+  print("One-fold: precision of NonSI: %s" % precision_score(test_target, predictions, pos_label = 'NonSI'))
+  print("One-fold: precision of SI: %s" % precision_score(test_target, predictions, pos_label = 'SI'))
 
-  # ######### KFolds ##############################
-  # k_fold = KFold(n=len(data_frame), n_folds=6)
-  # scores = []
-  # confusion = np.array([[0, 0], [0, 0]])
-  # for train_indices, test_indices in k_fold:
-  #   train_text = data_frame.iloc[train_indices]['text'].values
-  #   train_label = data_frame.iloc[train_indices]['class'].values
-  #   test_text = data_frame.iloc[test_indices]['text'].values
-  #   test_label = data_frame.iloc[test_indices]['class'].values
+  precision, recall, fscore, support = score(test_target, predictions)
 
-  #   pipeline.fit(train_text, train_label)
-  #   predictions = pipeline.predict(test_text)
+  print('precision: {}'.format(precision))
+  print('recall: {}'.format(recall))
+  print('fscore: {}'.format(fscore))
+  print('support: {}'.format(support))
 
-  #   confusion += confusion_matrix(test_label, predictions)
-  #   score = f1_score(test_label, predictions, pos_label = SPAM)
-  #   scores.append(score)
-
-  # print('Confusion matrix with 6-fold: ')
-  # print(confusion)
-  # print('Score with 6-fold: %s' % (sum(scores)/len(scores)))  
-
-  # Plot non-normalized confusion matrix
-  plt.figure()
-  plot_confusion_matrix(cnf_matrix, classes=class_names,
-                        title='Confusion matrix, without normalization')
-  # Plot normalized confusion matrix
-  plt.figure()
-  plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True,
-                        title='Normalized confusion matrix')
+  # # Plot non-normalized confusion matrix
+  # plt.figure()
+  # plot_confusion_matrix(cnf_matrix, classes=class_names,
+  #                       title='Confusion matrix, without normalization')
+  # # Plot normalized confusion matrix
+  # plt.figure()
+  # plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True,
+  #                       title='Normalized confusion matrix')
   plt.show()
+
+
+def main():
+  data_dir = '/Users/thuong/Documents/tmp_datasets/SI/SI-NonSI'
+  train_data_df, test_data_df, class_names = build_data_frame(data_dir)
+
+  # Feature extraction
+  print ('Starting feature extraction...')
+  start_time = time.time()
+  count_vectorizer = CountVectorizer()
+  train_data = count_vectorizer.fit_transform(train_data_df['value'].values)
+  print ('Done. Feature extraction elapsed time: %s' % (time.time() - start_time))
+  # print("Count Vectorize results:")
+  # print(train_data.shape)
+  # print(count_vectorizer.get_feature_names()[:100])
+  # print("Number of features: %s" % (len(count_vectorizer.get_feature_names())))
+
+  train_target, test_target = train_data_df['class'].values, test_data_df['class'].values
+
+  # Training
+  print ('Start training...')
+  class_weight = {'NonSI': 100, 'SI': 1}
+  svc_classifier = SVC(class_weight = class_weight)  
+  svc_classifier.fit(train_data, train_target)
+  print('training time: %s minutes' % (time.time() - start_time))
+
+  # Testing and evaluation
+  test_data = count_vectorizer.transform(test_data_df['value'].values)
+  predictions = svc_classifier.predict(test_data)
+
+  cnf_matrix = confusion_matrix(test_target, predictions)
+
+  print('Confusion matrix with one-fold: ')
+  print(cnf_matrix)
+  print("One-fold: precision of NonSI: %s" % precision_score(test_target, predictions, pos_label = 'NonSI'))
+  print("One-fold: precision of SI: %s" % precision_score(test_target, predictions, pos_label = 'SI'))
 
 
 if __name__ == "__main__":
