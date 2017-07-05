@@ -104,3 +104,5 @@ ENV/
 */.DS_Store
 */multiclass_svm_model_9keys.sav
 
+/*/tmp
+
